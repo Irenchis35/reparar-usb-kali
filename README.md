@@ -11,4 +11,4 @@ Ejecuta el script con permisos de superusuario:
 git clone https://github.com/Irenchis35/reparar-usb-kali.git
 cd reparar-usb-kali
 chmod +x reparar_usb.sh
-sudo ./reparar_usb.sh
+sudo bash reparar.usb.sh
