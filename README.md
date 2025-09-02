@@ -8,7 +8,7 @@ Script para detectar unidades USB conectadas y repararlas automáticamente segú
 Ejecuta el script con permisos de superusuario:
 
 ```bash
-git clone https://github.com/tu_usuario/reparar-usb-kali.git
+git clone https://github.com/Irenchis35/reparar-usb-kali.git
 cd reparar-usb-kali
 chmod +x reparar_usb.sh
 sudo ./reparar_usb.sh
