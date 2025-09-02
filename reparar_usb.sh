@@ -1,73 +1,62 @@
-
 #!/bin/bash
 
-LOGFILE="reparacion_usb_$(date +%Y%m%d_%H%M%S).log"
+set -e
 
-echo "Iniciando búsqueda de unidades USB conectadas..." | tee -a "$LOGFILE"
+# Función para listar unidades USB
+listar_unidades_usb() {
+  lsblk -dpno NAME,MODEL | grep -i usb | awk '{print $1}'
+}
 
-# Listar dispositivos USB conectados
-lsblk -o NAME,TRAN,MOUNTPOINT,LABEL,SIZE,TYPE | grep usb | tee -a "$LOGFILE"
+# Crear un array para dialog (opciones: etiqueta y valor)
+unidades=()
+while IFS= read -r line; do
+  unidades+=("$line" "$line")
+done < <(listar_unidades_usb)
 
-echo
-echo "Dispositivos USB detectados:"
-USB_DEVICES=($(lsblk -d -o NAME,TRAN | grep usb | awk '{print $1}'))
-
-if [ ${#USB_DEVICES[@]} -eq 0 ]; then
-    echo "No se detectaron unidades USB." | tee -a "$LOGFILE"
-    exit 1
+if [ ${#unidades[@]} -eq 0 ]; then
+  dialog --msgbox "No se encontraron unidades USB conectadas." 6 40
+  clear
+  exit 1
 fi
 
-for i in "${!USB_DEVICES[@]}"; do
-    echo "$((i+1)). /dev/${USB_DEVICES[$i]}"
-done
+# Mostrar menú para seleccionar unidad
+unidad=$(dialog --clear --title "Selecciona unidad USB" \
+  --menu "Unidades USB disponibles:" 15 50 5 \
+  "${unidades[@]}" 3>&1 1>&2 2>&3)
 
-echo
-read -p "Selecciona el número de la unidad USB que quieres reparar: " choice
+clear
 
-if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#USB_DEVICES[@]}" ]; then
-    echo "Selección inválida." | tee -a "$LOGFILE"
-    exit 1
+if [ -z "$unidad" ]; then
+  echo "No seleccionaste ninguna unidad. Saliendo."
+  exit 1
 fi
 
-DEVICE="/dev/${USB_DEVICES[$((choice-1))]}"
+# Confirmar reparación
+dialog --yesno "¿Seguro que quieres reparar la unidad $unidad?\nEsto puede borrar datos." 7 50
+respuesta=$?
 
-echo "Has seleccionado $DEVICE" | tee -a "$LOGFILE"
-
-read -p "¿Quieres reparar la unidad $DEVICE? (s/n): " confirm
-if [[ ! "$confirm" =~ ^[Ss]$ ]]; then
-    echo "Operación cancelada." | tee -a "$LOGFILE"
-    exit 0
+if [ $respuesta -ne 0 ]; then
+  dialog --msgbox "Operación cancelada." 5 30
+  clear
+  exit 0
 fi
 
-echo "Desmontando $DEVICE..." | tee -a "$LOGFILE"
-sudo umount ${DEVICE}?* 2>/dev/null
+# Desmontar particiones
+sudo umount "${unidad}"* 2>/dev/null || true
 
-echo "Detectando sistema de archivos..." | tee -a "$LOGFILE"
-FS_TYPE=$(lsblk -no FSTYPE $DEVICE)
+# Ejecutar fsck
+dialog --infobox "Ejecutando fsck para reparar $unidad..." 5 40
+sudo fsck -y "$unidad"
 
-if [ -z "$FS_TYPE" ]; then
-    echo "No se pudo detectar el sistema de archivos. Se usará fsck por defecto." | tee -a "$LOGFILE"
-    FS_TYPE="auto"
+# Preguntar si quiere formatear
+dialog --yesno "¿Quieres formatear la unidad $unidad a FAT32?\nEsto borrará todos los datos." 7 50
+formatear=$?
+
+if [ $formatear -eq 0 ]; then
+  dialog --infobox "Formateando $unidad a FAT32..." 5 40
+  sudo mkfs.vfat -F 32 "$unidad"
+  dialog --msgbox "Formateo completado." 5 30
 fi
 
-echo "Sistema de archivos detectado: $FS_TYPE" | tee -a "$LOGFILE"
-
-echo "Iniciando reparación..." | tee -a "$LOGFILE"
-
-case "$FS_TYPE" in
-    vfat|fat32|msdos)
-        sudo dosfsck -a $DEVICE | tee -a "$LOGFILE"
-        ;;
-    ntfs)
-        sudo ntfsfix $DEVICE | tee -a "$LOGFILE"
-        ;;
-    ext2|ext3|ext4)
-        sudo fsck -y $DEVICE | tee -a "$LOGFILE"
-        ;;
-    *)
-        echo "Sistema de archivos no reconocido o no soportado, intentando fsck genérico." | tee -a "$LOGFILE"
-        sudo fsck -y $DEVICE | tee -a "$LOGFILE"
-        ;;
-esac
-
-echo "Reparación finalizada. Revisa el log en $LOGFILE"
+dialog --msgbox "Proceso finalizado." 5 30
+clear
