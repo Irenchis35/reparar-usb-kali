@@ -1,5 +1,5 @@
 
-# Reparar USB en Kali Linux
+# Reparar USB 
 
 Script para detectar unidades USB conectadas y repararlas automáticamente según su sistema de archivos.
 
